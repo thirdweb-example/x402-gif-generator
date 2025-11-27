@@ -9,7 +9,7 @@ export default function Home() {
         <div className="absolute -bottom-1/4 right-0 h-[600px] w-[600px] rounded-full bg-linear-to-tl from-rose-500/10 via-purple-500/5 to-transparent blur-3xl" />
       </div>
 
-      <main className="relative flex w-full max-w-xl flex-col items-center gap-8">
+      <main className="relative flex w-full max-w-4xl flex-col items-center gap-8">
         <div className="space-y-4 text-center">
           <h1 className="text-4xl font-bold tracking-tight sm:text-5xl">
             <span className="bg-linear-to-r from-amber-400 via-orange-500 to-rose-500 bg-clip-text text-transparent">

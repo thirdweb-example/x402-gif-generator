@@ -14,19 +14,29 @@ const thirdwebFacilitator = facilitator({
   serverWalletAddress: process.env.THIRDWEB_SERVER_WALLET_ADDRESS!,
 });
 
-const keywordsSchema = z.object({
-  keywords: z
-    .array(z.string())
-    .min(1)
-    .max(3)
-    .describe("1-3 reaction keywords (emotions, gestures, expressions like 'facepalm', 'mind blown', 'celebration')"),
-  topic: z
-    .string()
-    .nullable()
-    .describe("Optional topic/context keyword (e.g. 'coding', 'coffee', 'monday') - only include if it would genuinely improve the GIF search, otherwise null"),
-  reasoning: z
-    .string()
-    .describe("Brief explanation of why these keywords were chosen"),
+const perspectiveEnum = z.enum(["emotional", "literal", "sarcastic"]);
+
+const strategiesSchema = z.object({
+  strategies: z
+    .array(
+      z.object({
+        keywords: z
+          .array(z.string())
+          .min(1)
+          .max(3)
+          .describe("1-3 search keywords for this perspective"),
+        topic: z
+          .string()
+          .nullable()
+          .describe("Optional topic/context keyword - only if it improves the search"),
+        perspective: perspectiveEnum.describe("The perspective this strategy represents"),
+        reasoning: z
+          .string()
+          .describe("Brief explanation of why these keywords were chosen for this perspective"),
+      })
+    )
+    .length(3)
+    .describe("Three different search strategies, one for each perspective"),
 });
 
 const selectionSchema = z.object({
@@ -39,6 +49,16 @@ const selectionSchema = z.object({
     .string()
     .describe("Brief explanation of why this GIF was selected"),
 });
+
+interface GiphyGif {
+  title: string;
+  alt_text?: string;
+  images: {
+    original: {
+      url: string;
+    };
+  };
+}
 
 export async function POST(request: Request) {
   try {
@@ -53,7 +73,6 @@ export async function POST(request: Request) {
     });
 
     if (paymentResult.status !== 200) {
-      // Payment required - return 402 response
       return Response.json(paymentResult.responseBody, {
         status: paymentResult.status,
         headers: paymentResult.responseHeaders,
@@ -66,42 +85,7 @@ export async function POST(request: Request) {
       return Response.json({ error: "Text input is required" }, { status: 400 });
     }
 
-    // Step 1: Use AI to analyze the text and generate keywords
-    const { object, usage } = await generateObject({
-      model: openai("gpt-5-mini"),
-      schema: keywordsSchema,
-      prompt: `You are a reaction GIF expert. Analyze the following text and determine the perfect reaction GIF to respond with.
-
-Text to analyze: "${text}"
-
-Instructions:
-1. Extract 1-3 REACTION keywords (emotions, gestures, expressions like "facepalm", "mind blown", "celebration", "cringe", "awkward")
-2. Optionally extract a TOPIC keyword that contextualizes the reaction - but ONLY if:
-   - The topic is specific and searchable (e.g. "coding", "coffee", "cat", "monday")
-   - Including it would likely find a more relevant GIF
-   - The topic is commonly used in GIF searches
-   - Set to null if the reaction keywords alone are sufficient or if the topic is too generic/abstract
-
-Examples:
-- "when my code finally compiles" → keywords: ["relief", "celebration"], topic: "coding"
-- "that feeling when you see your crush" → keywords: ["nervous", "excited"], topic: null (too generic)
-- "me waiting for my coffee to brew" → keywords: ["waiting", "impatient"], topic: "coffee"
-- "when someone says they don't like pizza" → keywords: ["shocked", "disgusted"], topic: null (reaction is enough)`,
-    });
-
-    console.log("Usage:", usage);
-
-    // Step 2: Build search query - include topic only if provided
-    const reactionKeywords = object.keywords.join(" ");
-    const searchQuery = object.topic
-      ? `${reactionKeywords} ${object.topic}`
-      : reactionKeywords;
-
-      console.log("Reaction keywords:", reactionKeywords);
-      console.log("Topic:", object.topic);
-
     const giphyApiKey = process.env.GIPHY_API_KEY;
-
     if (!giphyApiKey) {
       return Response.json(
         { error: "Giphy API key not configured" },
@@ -109,43 +93,82 @@ Examples:
       );
     }
 
-    // Step 3: Fetch 10 GIFs from Giphy
-    const giphyResponse = await fetch(
-      `https://api.giphy.com/v1/gifs/search?api_key=${giphyApiKey}&q=${encodeURIComponent(
-        searchQuery
-      )}&limit=10&rating=pg-13&lang=en`
-    );
+    // Step 1: Generate 3 different search strategies
+    const { object: strategiesResult } = await generateObject({
+      model: openai("gpt-4o-mini"),
+      schema: strategiesSchema,
+      prompt: `You are a reaction GIF expert. Analyze the following text and create 3 DIFFERENT search strategies to find reaction GIFs, each from a unique perspective.
 
-    if (!giphyResponse.ok) {
-      return Response.json(
-        { error: "Failed to fetch from Giphy" },
-        { status: 500 }
+Text to analyze: "${text}"
+
+Create exactly 3 strategies:
+
+1. EMOTIONAL perspective: Focus on the core emotion/feeling (e.g., "joy", "frustration", "relief", "cringe")
+2. LITERAL perspective: Focus on the literal action or situation described (e.g., "waiting", "working late", "celebrating")
+3. SARCASTIC perspective: Focus on ironic, sarcastic, or passive-aggressive reactions (e.g., "slow clap", "oh really", "sure jan", "cool story")
+
+For each strategy:
+- Extract 1-3 keywords that would work well as Giphy search terms
+- Optionally include a topic if it would genuinely improve results (e.g., "coding", "coffee", "cat")
+- Make sure each strategy produces DIFFERENT search queries
+
+Examples for "when my code finally compiles after 3 hours":
+- Emotional: keywords: ["relief", "exhausted"], topic: null
+- Literal: keywords: ["coding", "success"], topic: "programmer"
+- Sarcastic: keywords: ["slow clap", "finally"], topic: null`,
+    });
+
+    console.log("Generated strategies:", JSON.stringify(strategiesResult.strategies, null, 2));
+
+    // Step 2: Execute parallel Giphy searches for each strategy
+    const searchPromises = strategiesResult.strategies.map(async (strategy) => {
+      const searchQuery = strategy.topic
+        ? `${strategy.keywords.join(" ")} ${strategy.topic}`
+        : strategy.keywords.join(" ");
+
+      console.log(`Searching for ${strategy.perspective}: "${searchQuery}"`);
+
+      const response = await fetch(
+        `https://api.giphy.com/v1/gifs/search?api_key=${giphyApiKey}&q=${encodeURIComponent(
+          searchQuery
+        )}&limit=5&rating=pg-13&lang=en`
       );
-    }
 
-    const giphyData = await giphyResponse.json();
+      if (!response.ok) {
+        return { strategy, gifs: [] };
+      }
 
-    if (!giphyData.data || giphyData.data.length === 0) {
-      return Response.json({ error: "No GIF found" }, { status: 404 });
-    }
+      const data = await response.json();
+      return { strategy, gifs: data.data || [] };
+    });
 
-    const gifs = giphyData.data;
+    const searchResults = await Promise.all(searchPromises);
 
-    // Step 4: Use AI to select the best GIF
-    const gifOptions = gifs.map(
-      (gif: { title: string; alt_text: string }, index: number) => ({
+    // Step 3: Select the best GIF from each search result
+    const selectionPromises = searchResults.map(async ({ strategy, gifs }) => {
+      if (gifs.length === 0) {
+        return null;
+      }
+
+      const gifOptions = gifs.map((gif: GiphyGif, index: number) => ({
         index,
         title: gif.title,
         altText: gif.alt_text || "",
-      })
-    );
+      }));
 
-    const { object: selection } = await generateObject({
-      model: openai("gpt-4o-mini"),
-      schema: selectionSchema,
-      prompt: `You are selecting the perfect reaction GIF for someone's message.
+      const { object: selection } = await generateObject({
+        model: openai("gpt-4o-mini"),
+        schema: selectionSchema,
+        prompt: `You are selecting the best ${strategy.perspective} reaction GIF for someone's message.
 
 Original message: "${text}"
+Perspective: ${strategy.perspective.toUpperCase()} - ${
+          strategy.perspective === "emotional"
+            ? "focusing on the core emotion"
+            : strategy.perspective === "literal"
+            ? "focusing on the literal situation"
+            : "focusing on sarcasm and irony"
+        }
 
 Here are the available GIFs:
 ${gifOptions
@@ -155,23 +178,29 @@ ${gifOptions
   })
   .join("\n")}
 
-Select the GIF that:
-1. Best matches the emotional tone and context of the original message
-2. Would be the funniest or most relatable reaction
-3. Has clear, expressive content (use the alt text to understand what the GIF shows)
+Select the GIF that best represents the ${strategy.perspective} perspective on this message.`,
+      });
 
-Return the index of the best GIF.`,
+      const selectedGif = gifs[selection.selectedIndex] || gifs[0];
+
+      return {
+        url: selectedGif.images.original.url,
+        keywords: strategy.keywords,
+        topic: strategy.topic,
+        reasoning: selection.reasoning,
+        title: selectedGif.title,
+        perspective: strategy.perspective,
+      };
     });
 
-    const selectedGif = gifs[selection.selectedIndex] || gifs[0];
+    const selections = await Promise.all(selectionPromises);
+    const validGifs = selections.filter((s) => s !== null);
 
-    return Response.json({
-      url: selectedGif.images.original.url,
-      keywords: object.keywords,
-      topic: object.topic,
-      reasoning: selection.reasoning,
-      title: selectedGif.title,
-    });
+    if (validGifs.length === 0) {
+      return Response.json({ error: "No GIFs found" }, { status: 404 });
+    }
+
+    return Response.json({ gifs: validGifs });
   } catch (error) {
     console.error("Error generating GIF:", error);
     return Response.json(

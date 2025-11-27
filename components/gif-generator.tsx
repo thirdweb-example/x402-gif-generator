@@ -10,7 +10,7 @@ import {
   useAutoConnect,
   useFetchWithPayment,
   useWalletBalance,
-  useInvalidateBalances
+  useInvalidateBalances,
 } from "thirdweb/react";
 import { createThirdwebClient } from "thirdweb";
 import { monad } from "thirdweb/chains";
@@ -21,17 +21,30 @@ const client = createThirdwebClient({
 
 const usdcAddress = "0x754704Bc059F8C67012fEd69BC8A327a5aafb603";
 
+type Perspective = "emotional" | "literal" | "sarcastic";
+
 interface GifResult {
   url: string;
   keywords: string[];
   topic: string | null;
   reasoning: string;
   title: string;
+  perspective: Perspective;
 }
+
+interface ApiResponse {
+  gifs: GifResult[];
+}
+
+const perspectiveLabels: Record<Perspective, { label: string; color: string }> = {
+  emotional: { label: "Emotional", color: "bg-rose-500/10 text-rose-600 border-rose-500/30" },
+  literal: { label: "Literal", color: "bg-sky-500/10 text-sky-600 border-sky-500/30" },
+  sarcastic: { label: "Sarcastic", color: "bg-emerald-500/10 text-emerald-600 border-emerald-500/30" },
+};
 
 export function GifGenerator() {
   const [input, setInput] = useState("");
-  const [result, setResult] = useState<GifResult | null>(null);
+  const [results, setResults] = useState<GifResult[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   const { isLoading: isAutoConnecting } = useAutoConnect({ client });
@@ -50,7 +63,7 @@ export function GifGenerator() {
     if (!input.trim() || isPending) return;
 
     setError(null);
-    setResult(null);
+    setResults([]);
 
     try {
       const data = await fetchWithPayment("/api/generate", {
@@ -60,41 +73,40 @@ export function GifGenerator() {
       });
 
       invalidateBalances({ chainId: monad.id });
-      setResult(data as GifResult);
+      setResults((data as ApiResponse).gifs);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
     }
   };
 
-  const handleDownload = async () => {
-    if (!result?.url) return;
-
+  const handleDownload = async (gif: GifResult) => {
     try {
-      const response = await fetch(result.url);
+      const response = await fetch(gif.url);
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `reaction-${Date.now()}.gif`;
+      const uniqueId = crypto.randomUUID().slice(0, 8);
+      a.download = `reaction-${gif.perspective}-${uniqueId}.gif`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
     } catch {
-      // Fallback: open in new tab
-      window.open(result.url, "_blank");
+      window.open(gif.url, "_blank");
     }
   };
 
   return (
-    <div className="w-full max-w-xl space-y-4">
+    <div className="w-full max-w-6xl space-y-6">
       <div className="flex flex-col gap-4">
         <div className="flex flex-col items-center justify-center gap-4">
           <p className="text-sm text-muted-foreground">
             Your balance: ${balance?.displayValue || "--.--"}
           </p>
         </div>
-        <form onSubmit={handleSubmit} className="flex gap-3">
+        <div className="flex flex-col items-center justify-center gap-4">
+        <form onSubmit={handleSubmit} className="flex gap-3 w-full max-w-xl mx-auto">
           <Input
             type="text"
             placeholder="Describe a situation or feeling..."
@@ -115,6 +127,7 @@ export function GifGenerator() {
             )}
           </Button>
         </form>
+        </div>
       </div>
 
       {error && (
@@ -131,49 +144,62 @@ export function GifGenerator() {
             <div className="h-16 w-16 animate-spin rounded-full border-4 border-muted border-t-primary" />
           </div>
           <p className="text-sm text-muted-foreground animate-pulse">
-            Finding the perfect reaction...
+            Finding 3 perfect reactions...
           </p>
         </div>
       )}
 
-      {result && !isPending && (
-        <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
-          <Card className="overflow-hidden">
-            <CardContent className="p-0">
-              <img src={result.url} alt={result.title} className="w-full" />
-            </CardContent>
-          </Card>
-
-          <div className="flex items-center justify-between gap-4">
-            <div className="flex flex-wrap items-center gap-2">
-              {result.keywords.map((keyword) => (
-                <span
-                  key={keyword}
-                  className="rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary"
-                >
-                  {keyword}
-                </span>
-              ))}
-              {result.topic && (
-                <span className="rounded-full border border-muted-foreground/30 px-3 py-1 text-xs text-muted-foreground">
-                  {result.topic}
-                </span>
-              )}
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleDownload}
-              className="shrink-0"
-            >
-              <Download className="mr-2 h-4 w-4" />
-              Download
-            </Button>
-          </div>
-
-          <p className="text-sm text-muted-foreground italic">
-            {result.reasoning}
-          </p>
+      {results.length > 0 && !isPending && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
+          {results.map((gif, index) => {
+            const perspectiveStyle = perspectiveLabels[gif.perspective];
+            return (
+              <Card
+                key={`${gif.perspective}-${index}`}
+                className="overflow-hidden flex flex-col"
+              >
+                <img
+                  src={gif.url}
+                  alt={gif.title}
+                  className="w-full aspect-square object-cover"
+                />
+                <CardContent className="p-3 flex flex-col gap-2 flex-1">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span
+                      className={`rounded-full border px-2 py-0.5 text-xs font-medium ${perspectiveStyle.color}`}
+                    >
+                      {perspectiveStyle.label}
+                    </span>
+                    {gif.keywords.map((keyword) => (
+                      <span
+                        key={keyword}
+                        className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary"
+                      >
+                        {keyword}
+                      </span>
+                    ))}
+                    {gif.topic && (
+                      <span className="rounded-full border border-muted-foreground/30 px-2 py-0.5 text-xs text-muted-foreground">
+                        {gif.topic}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground italic flex-1">
+                    {gif.reasoning}
+                  </p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleDownload(gif)}
+                    className="w-full mt-auto"
+                  >
+                    <Download className="mr-2 h-3 w-3" />
+                    Download
+                  </Button>
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
       )}
     </div>
