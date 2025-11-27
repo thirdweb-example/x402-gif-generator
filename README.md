@@ -1,5 +1,7 @@
 # Reaction GIF Generator
 
+![Reaction GIF Generator](app/opengraph-image.png)
+
 A simple AI-powered app that generates the perfect reaction GIF for any situation. Describe a feeling or scenario, and the app uses AI to find the most relevant and funny GIF.
 
 **Each generation costs $0.01**, paid via the [x402 payment protocol](https://portal.thirdweb.com/x402).
