@@ -1,4 +1,5 @@
 import { GifGenerator } from "@/components/gif-generator";
+import { Logo } from "@/components/logo";
 
 export default function Home() {
   return (
@@ -11,6 +12,9 @@ export default function Home() {
 
       <main className="relative flex w-full max-w-4xl flex-col items-center gap-8">
         <div className="space-y-4 text-center">
+          <div className="flex justify-center mb-6">
+            <Logo size={72} />
+          </div>
           <h1 className="text-4xl font-bold tracking-tight sm:text-5xl">
             <span className="bg-linear-to-r from-amber-400 via-orange-500 to-rose-500 bg-clip-text text-transparent">
               Reaction GIF

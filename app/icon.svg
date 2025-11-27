@@ -1,0 +1,21 @@
+<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f59e0b"/>
+      <stop offset="50%" stop-color="#f97316"/>
+      <stop offset="100%" stop-color="#f43f5e"/>
+    </linearGradient>
+    <linearGradient id="gl" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fbbf24"/>
+      <stop offset="50%" stop-color="#fb923c"/>
+      <stop offset="100%" stop-color="#fb7185"/>
+    </linearGradient>
+  </defs>
+  <rect x="4" y="4" width="56" height="56" rx="14" stroke="url(#g)" stroke-width="3" fill="#1a1625"/>
+  <rect x="10" y="10" width="44" height="44" rx="10" stroke="url(#gl)" stroke-width="2" fill="none" opacity="0.5"/>
+  <path d="M26 20L46 32L26 44V20Z" fill="url(#g)"/>
+  <line x1="18" y1="26" x2="22" y2="26" stroke="url(#g)" stroke-width="2" stroke-linecap="round" opacity="0.7"/>
+  <line x1="16" y1="32" x2="22" y2="32" stroke="url(#g)" stroke-width="2" stroke-linecap="round" opacity="0.9"/>
+  <line x1="18" y1="38" x2="22" y2="38" stroke="url(#g)" stroke-width="2" stroke-linecap="round" opacity="0.7"/>
+</svg>
+
